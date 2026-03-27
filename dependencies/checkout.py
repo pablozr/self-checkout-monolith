@@ -17,3 +17,6 @@ async def validate_checkout_context(
         raise HTTPException(status_code=400, detail=checkout_response["message"])
 
     return checkout_response["data"]["checkout"]
+
+
+

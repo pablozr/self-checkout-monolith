@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     RABBITMQ_PORT: int = 5672
     RABBITMQ_USER: str
     RABBITMQ_PASSWORD: str
+    RABBITMQ_MANAGEMENT_PORT: int = 15672
 
     REDIS_HOST: str
     REDIS_PORT: int = 6379
@@ -51,6 +52,9 @@ PRODUCT_CACHE_TTL_SECONDS = 86400
 
 REDIS_SESSION_PREFIX = "session"
 REDIS_PRODUCT_PREFIX = "product"
+REDIS_IDEMPOTENCY_PREFIX = "checkout_idempotency"
+
+CHECKOUT_IDEMPOTENCY_TTL_SECONDS = 3600
 
 EMAIL_QUEUE = "email-queue"
 

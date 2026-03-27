@@ -4,7 +4,7 @@ from core.config.config import settings
 
 
 class Redis:
-    redis: redis.asyncio.Redis = None  # type: ignore[assignment]
+    redis: redis.asyncio.Redis
 
     async def connect(self):
         self.redis = redis.asyncio.Redis(

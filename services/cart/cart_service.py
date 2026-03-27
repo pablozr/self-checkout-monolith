@@ -11,6 +11,7 @@ from schemas.cart import (
     CartData,
     CartItemData,
     CartSessionContext,
+    is_cart_data,
 )
 from schemas.product import ProductData
 from services.cache import cache_service
@@ -249,6 +250,26 @@ async def clear_cart(redis_client, session_context: CartSessionContext) -> dict[
             "message": "Cart cleared successfully",
             "data": {"cart": session},
         }
+    except Exception as e:
+        logger.exception(e)
+        return _error_response("Internal server error")
+
+
+async def clear_cart_by_session_token(
+    redis_client,
+    session_token: str,
+) -> dict[str, Any]:
+    try:
+        session_raw = await cache_service.get_by_key(_session_key(session_token), redis_client)
+        if not is_cart_data(session_raw):
+            return _error_response("Session not found")
+
+        session_context: CartSessionContext = {
+            "token": session_token,
+            "session": session_raw,
+        }
+
+        return await clear_cart(redis_client, session_context)
     except Exception as e:
         logger.exception(e)
         return _error_response("Internal server error")

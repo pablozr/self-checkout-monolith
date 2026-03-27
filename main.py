@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.config.config import settings
 from core.logger.logger import logger
 from core.postgresql.postgresql import postgresql
 from core.rabbitmq.rabbitmq import rabbitmq
@@ -49,3 +50,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(users_router, prefix="/users", tags=["users"])
 app.include_router(menu_router, prefix="/menu", tags=["menu"])
 app.include_router(cart_router, prefix="/cart", tags=["cart"])
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=settings.API_PORT)
