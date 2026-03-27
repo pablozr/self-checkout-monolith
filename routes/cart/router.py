@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends
 
 from core.postgresql.postgresql import postgresql
 from core.redis.redis import redis_cache
-from core.security import session
-from core.security.rate_limit import CART_MUTATION_RATE_LIMIT_DEPS
+from dependencies import session
+from dependencies.rate_limit import CART_MUTATION_RATE_LIMIT_DEPS
 from functions.utils.utils import default_response
 from schemas.cart import CartAddItemRequest, CartSessionContext, CartUpdateItemRequest
 from services.cart import cart_service
@@ -12,7 +12,7 @@ from services.cart import cart_service
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def get_cart(
     session_context: CartSessionContext = Depends(session.validate_session),
 ):
@@ -57,7 +57,7 @@ async def remove_item(
     )
 
 
-@router.delete("/", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
+@router.delete("", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
 async def clear_cart(
     session_context: CartSessionContext = Depends(session.validate_session),
     redis_client=Depends(redis_cache.get_redis),

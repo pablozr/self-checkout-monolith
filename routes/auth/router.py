@@ -11,8 +11,8 @@ from core.config.config import (
 from core.postgresql.postgresql import postgresql
 from core.rabbitmq.rabbitmq import rabbitmq
 from core.redis.redis import redis_cache
-from core.security import security
-from core.security.rate_limit import (
+from dependencies import auth
+from dependencies.rate_limit import (
     FORGET_PASSWORD_RATE_LIMIT_DEPS,
     LOGIN_RATE_LIMIT_DEPS,
     VALIDATE_CODE_RATE_LIMIT_DEPS,
@@ -129,7 +129,7 @@ async def forget_password(
 @router.post("/validate-code", dependencies=VALIDATE_CODE_RATE_LIMIT_DEPS)
 async def validate_code(
     data: ValidateCodeRequest,
-    user: dict = Depends(security.validate_token_to_validate_code),
+    user: dict = Depends(auth.validate_token_to_validate_code),
     redis_client=Depends(redis_cache.get_redis),
 ):
     response = await auth_service.validate_reset_code(redis_client, user, data)
@@ -158,7 +158,7 @@ async def validate_code(
 @router.post("/update-password")
 async def update_password(
     data: UpdatePasswordRequest,
-    user: dict = Depends(security.validate_token_to_update_password),
+    user: dict = Depends(auth.validate_token_to_update_password),
     conn: asyncpg.Connection = Depends(postgresql.get_db),
 ):
     response = await auth_service.update_password_after_reset(conn, user, data)
