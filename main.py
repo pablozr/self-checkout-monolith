@@ -8,6 +8,8 @@ from core.logger.logger import logger
 from core.postgresql.postgresql import postgresql
 from core.rabbitmq.rabbitmq import rabbitmq
 from core.redis.redis import redis_cache
+from core.sse.sse_manager import sse_manager
+from routes.realtime.router import router as realtime_router
 from routes.auth.router import router as auth_router
 from routes.cart.router import router as cart_router
 from routes.menu.router import router as menu_router
@@ -20,6 +22,7 @@ async def lifespan(app: FastAPI):
 
     await postgresql.connect()
     await redis_cache.connect()
+    await sse_manager.connect(redis_cache.redis)
     await rabbitmq.connect()
 
     logger.info("All services connected successfully.")
@@ -27,6 +30,7 @@ async def lifespan(app: FastAPI):
     yield
 
     await postgresql.disconnect()
+    await sse_manager.disconnect()
     await redis_cache.disconnect()
     await rabbitmq.disconnect()
 
@@ -50,6 +54,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(users_router, prefix="/users", tags=["users"])
 app.include_router(menu_router, prefix="/menu", tags=["menu"])
 app.include_router(cart_router, prefix="/cart", tags=["cart"])
+app.include_router(realtime_router, prefix="/admin/realtime", tags=["realtime"])
 
 if __name__ == "__main__":
     import uvicorn
