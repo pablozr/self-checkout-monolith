@@ -12,11 +12,6 @@ from core.postgresql.postgresql import postgresql
 from core.rabbitmq.rabbitmq import rabbitmq
 from core.redis.redis import redis_cache
 from dependencies import auth
-from dependencies.rate_limit import (
-    FORGET_PASSWORD_RATE_LIMIT_DEPS,
-    LOGIN_RATE_LIMIT_DEPS,
-    VALIDATE_CODE_RATE_LIMIT_DEPS,
-)
 from schemas.auth import (
     ForgetPasswordRequestModel,
     LoginGoogleRequestModel,
@@ -29,7 +24,7 @@ from services.auth import auth_service
 router = APIRouter()
 
 
-@router.post("/login", dependencies=LOGIN_RATE_LIMIT_DEPS)
+@router.post("/login")
 async def login(
     data: LoginRequestModel, conn: asyncpg.Connection = Depends(postgresql.get_db)
 ):
@@ -56,7 +51,7 @@ async def login(
     return resp
 
 
-@router.post("/google-login", dependencies=LOGIN_RATE_LIMIT_DEPS)
+@router.post("/google-login")
 async def google_login(
     data: LoginGoogleRequestModel,
     conn: asyncpg.Connection = Depends(postgresql.get_db),
@@ -96,7 +91,7 @@ async def logout():
     return resp
 
 
-@router.post("/forget-password", dependencies=FORGET_PASSWORD_RATE_LIMIT_DEPS)
+@router.post("/forget-password")
 async def forget_password(
     data: ForgetPasswordRequestModel,
     conn: asyncpg.Connection = Depends(postgresql.get_db),
@@ -126,7 +121,7 @@ async def forget_password(
     return resp
 
 
-@router.post("/validate-code", dependencies=VALIDATE_CODE_RATE_LIMIT_DEPS)
+@router.post("/validate-code")
 async def validate_code(
     data: ValidateCodeRequest,
     user: dict = Depends(auth.validate_token_to_validate_code),

@@ -12,7 +12,6 @@ API em FastAPI para fluxo de self-checkout em restaurante: autenticação, gest�
 - Bootstrap de sessao anonima por mesa (`/menu?table=<numero>`)
 - Carrinho anonimo em Redis (`/cart`, add/update/remove/clear)
 - Catalogo ativo vindo do Postgres, com cache por produto no Redis
-- Rate limiting nas rotas sensiveis (`login`, `forget-password`, `validate-code`, `menu`, mutacoes de carrinho)
 
 ### Ainda nao implementado neste repo
 
@@ -38,7 +37,7 @@ Sem ORM: consultas SQL diretas, com placeholders `$1`, `$2`, etc.
 - `routes/`: camada HTTP (parsing, Depends, cookies, status code)
 - `services/`: regra de negocio e acesso a DB/Redis/Rabbit
 - `schemas/`: contratos de entrada e mapeamentos de saida
-- `core/`: conexoes, seguranca, config, rate limit, logger
+- `core/`: conexoes, seguranca, config, logger
 - `workers/`: processos assinc separados (ex.: SMTP)
 
 ## Estrutura principal
@@ -152,7 +151,6 @@ Use o arquivo `.env.example` como base. Blocos principais:
 - Cookies HttpOnly + `SameSite=lax` (`auth`, `auth_reset`, `anon_session`)
 - JWT para auth e reset
 - Sessao anonima do carrinho com TTL renovado no Redis
-- Rate limit por IP com suporte a `X-Forwarded-For`
 
 ## Banco atual (`schema.sql`)
 

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 from core.postgresql.postgresql import postgresql
 from core.redis.redis import redis_cache
 from dependencies import session
-from dependencies.rate_limit import CART_MUTATION_RATE_LIMIT_DEPS
 from functions.utils.utils import default_response
 from schemas.cart import CartAddItemRequest, CartSessionContext, CartUpdateItemRequest
 from services.cart import cart_service
@@ -19,7 +18,7 @@ async def get_cart(
     return await default_response(cart_service.get_cart, [session_context])
 
 
-@router.post("/items", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
+@router.post("/items")
 async def add_item(
     data: CartAddItemRequest,
     session_context: CartSessionContext = Depends(session.validate_session),
@@ -32,7 +31,7 @@ async def add_item(
     )
 
 
-@router.put("/items/{product_id}", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
+@router.put("/items/{product_id}")
 async def update_item_quantity(
     product_id: int,
     data: CartUpdateItemRequest,
@@ -45,7 +44,7 @@ async def update_item_quantity(
     )
 
 
-@router.delete("/items/{product_id}", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
+@router.delete("/items/{product_id}")
 async def remove_item(
     product_id: int,
     session_context: CartSessionContext = Depends(session.validate_session),
@@ -57,7 +56,7 @@ async def remove_item(
     )
 
 
-@router.delete("", dependencies=CART_MUTATION_RATE_LIMIT_DEPS)
+@router.delete("")
 async def clear_cart(
     session_context: CartSessionContext = Depends(session.validate_session),
     redis_client=Depends(redis_cache.get_redis),

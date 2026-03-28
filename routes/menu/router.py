@@ -6,7 +6,6 @@ from core.config.config import ANON_SESSION_TTL_SECONDS, COOKIE_ANON_SESSION
 from core.postgresql.postgresql import postgresql
 from core.redis.redis import redis_cache
 from dependencies import session
-from dependencies.rate_limit import MENU_BOOTSTRAP_RATE_LIMIT_DEPS
 from schemas.cart import CartSessionContext
 from services.cart import cart_service
 from services.catalog import catalog_service
@@ -15,7 +14,7 @@ from services.table import table_service
 router = APIRouter()
 
 
-@router.get("", dependencies=MENU_BOOTSTRAP_RATE_LIMIT_DEPS)
+@router.get("")
 async def load_menu(
     table: int = Query(gt=0),
     session_context: CartSessionContext | None = Depends(
