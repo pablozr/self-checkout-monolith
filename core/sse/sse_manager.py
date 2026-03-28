@@ -13,6 +13,7 @@ class SSEManager:
     def __init__(self) -> None:
         self.pubsub: PubSub | None = None
         self.listener_task: asyncio.Task[None] | None = None
+        # Each connected admin SSE client receives its own in-memory queue.
         self.admin_clients: set[asyncio.Queue[dict[str, Any]]] = set()
         self.lock = asyncio.Lock()
         self.running = False
@@ -21,6 +22,7 @@ class SSEManager:
         if self.running:
             return
 
+        # Single Redis subscription feeds all local SSE clients.
         self.pubsub = redis_client.pubsub()
         await self.pubsub.subscribe(REDIS_SSE_ADMIN_ORDERS_CHANNEL)
 
@@ -69,6 +71,7 @@ class SSEManager:
         logger.info("SSE manager disconnected")
 
     async def subscribe_admin(self) -> asyncio.Queue[dict[str, Any]]:
+        # Bounded queue to protect memory if client reads slower than publish rate.
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         async with self.lock:
             self.admin_clients.add(queue)
@@ -85,6 +88,7 @@ class SSEManager:
         try:
             while self.running:
                 try:
+                    # Poll Pub/Sub with timeout so cancellation and shutdown stay responsive.
                     message = await self.pubsub.get_message(
                         ignore_subscribe_messages=True,
                         timeout=1.0,
@@ -100,6 +104,7 @@ class SSEManager:
                     if payload is None:
                         continue
 
+                    # Broadcast parsed payload to all connected admin client queues.
                     await self._fanout_admin(payload)
 
                 except asyncio.CancelledError:
@@ -148,6 +153,7 @@ class SSEManager:
         for queue in queues:
             try:
                 if queue.full():
+                    # Drop oldest event for this client to keep newest state flowing.
                     try:
                         queue.get_nowait()
                     except asyncio.QueueEmpty:

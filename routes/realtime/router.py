@@ -15,6 +15,7 @@ async def stream_admin_orders(
     request: Request,
     _: dict = Depends(auth.require_admin_rank),
 ):
+    # One queue per connected admin client; SSE manager pushes events into it.
     queue = await sse_manager.subscribe_admin()
 
     async def event_generator():
@@ -24,16 +25,20 @@ async def stream_admin_orders(
                     break
 
                 try:
+                    # Wait for the next domain event routed through Redis -> SSEManager.
                     payload = await asyncio.wait_for(queue.get(), timeout=20.0)
                     event_name = str(payload.get("event", "message"))
                     data = json.dumps(payload, default=str)
 
+                    # SSE frame format: event name + serialized payload.
                     yield f"event: {event_name}\ndata: {data}\n\n"
 
                 except asyncio.TimeoutError:
+                    # Keep connection alive when there are no business events.
                     yield "event: ping\ndata: {}\n\n"
 
         finally:
+            # Always remove disconnected client queue to avoid leaks.
             await sse_manager.unsubscribe_admin(queue)
 
     return StreamingResponse(
