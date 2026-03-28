@@ -1,17 +1,11 @@
 from decimal import Decimal, ROUND_HALF_UP
-import json
 from typing import Any
 
 import asyncpg
 
-from core.config.config import (
-    CHECKOUT_IDEMPOTENCY_TTL_SECONDS,
-)
 from core.logger.logger import logger
 from schemas.cart import CartSessionContext
 from schemas.checkout import CheckoutContextData, CheckoutItemData
-from services.cache import cache_service
-from services.cart import cart_service
 from services.idempotency import idempotency_service
 from services.payment import payment_service
 
@@ -113,7 +107,7 @@ async def build_checkout_context(
         return _error_response("Internal server error")
 
 
-async def confirm_checkout(
+async def start_stripe_checkout(
     conn: asyncpg.Connection,
     redis_client,
     checkout_context: CheckoutContextData,
@@ -121,58 +115,18 @@ async def confirm_checkout(
 ) -> dict[str, Any]:
     # Keep this in outer scope so failure handlers can clean it up.
     redis_key = None
+    order_id = None
+    payment_id = None
+    request_hash = None
 
     try:
-        session_token = checkout_context["sessionToken"]
-        redis_key = idempotency_service.build_checkout_idempotency_key(
-            idempotency_key,
-            session_token,
+        redis_key, request_hash, replay_response = await idempotency_service.initialize_checkout_request(
+            redis_client=redis_client,
+            checkout_context=checkout_context,
+            idempotency_key=idempotency_key,
         )
-        request_hash = idempotency_service.build_request_hash(checkout_context)
-
-        # Fast path: key already processed, so replay deterministic response.
-        existing_response_raw = await cache_service.get_by_key(redis_key, redis_client)
-        if isinstance(existing_response_raw, dict):
-            existing_response = existing_response_raw
-            existing_hash = existing_response.get("requestHash")
-
-            if existing_hash and existing_hash != request_hash:
-                return _error_response(
-                    "Idempotency key already used with a different payload"
-                )
-
-            return idempotency_service.build_replay_response(existing_response)
-
-        # Acquire idempotency lock using NX to avoid duplicate processing.
-        processing_payload = {
-            "key": idempotency_key,
-            "state": "processing",
-            "requestHash": request_hash,
-        }
-
-        created = await redis_client.set(
-            redis_key,
-            json.dumps(processing_payload),
-            ex=CHECKOUT_IDEMPOTENCY_TTL_SECONDS,
-            nx=True,
-        )
-
-        # Lost race for the same key; replay stored result when available.
-        if not created:
-            concurrent_response_raw = await cache_service.get_by_key(redis_key, redis_client)
-
-            if isinstance(concurrent_response_raw, dict):
-                concurrent_response = concurrent_response_raw
-                existing_hash = concurrent_response.get("requestHash")
-
-                if existing_hash and existing_hash != request_hash:
-                    return _error_response(
-                        "Idempotency key already used with a different payload"
-                    )
-
-                return idempotency_service.build_replay_response(concurrent_response)
-
-            return _error_response("Checkout request already in progress")
+        if replay_response is not None:
+            return replay_response
 
         # Create order aggregate atomically before touching payment provider.
         async with conn.transaction():
@@ -234,63 +188,66 @@ async def confirm_checkout(
 
             payment_id = payment_row["id"]
 
-        # Gateway call happens after order persistence.
-        gateway_result = await payment_service.process_checkout_payment(checkout_context)
-        payment_state = gateway_result["state"]
-        order_state = "confirmed" if payment_state == "approved" else "pending"
+            stripe_response = await payment_service.start_stripe_checkout_session(
+                checkout_context=checkout_context,
+                order_id=order_id,
+                payment_id=payment_id,
+                idempotency_key=idempotency_key,
+            )
 
-        # Persist final payment/order states.
-        async with conn.transaction():
+            if not stripe_response["status"]:
+                await conn.execute(
+                    "UPDATE payments SET status = $1 WHERE id = $2",
+                    "failed",
+                    payment_id,
+                )
+
+                service_response = _error_response(stripe_response["message"])
+                await idempotency_service.save_payload(
+                    redis_client,
+                    redis_key,{
+                        "key": idempotency_key,
+                        "state": "failed",
+                        "requestHash": request_hash,
+                        "orderId": order_id,
+                        "paymentId": payment_id,
+                        "serviceResponse": service_response,
+                    }
+                )
+                return service_response
+
+            stripe_data = stripe_response["data"]
+
             await conn.execute(
-                """
-                UPDATE payments
-                SET status = $1
-                WHERE id = $2
-                """,
-                payment_state,
+                "UPDATE payments SET status = $1, checkoutSessionId = $2, checkoutUrl = $3 WHERE id = $4",
+                "requires_action",
+                stripe_data["checkoutSessionId"],
+                stripe_data["checkoutUrl"],
                 payment_id,
             )
 
-            await conn.execute(
-                """
-                UPDATE orders
-                SET status = $1
-                WHERE id = $2
-                """,
-                order_state,
-                order_id,
+            service_response = {
+                "status": True,
+                "message": "Stripe checkout in progress",
+                "data": {
+                    "checkoutUrl": stripe_data["checkoutUrl"]
+                }
+            }
+
+            await idempotency_service.save_payload(
+                redis_client,
+                redis_key,
+                {
+                    "key": idempotency_key,
+                    "state": "completed",
+                    "requestHash": request_hash,
+                    "orderId": order_id,
+                    "paymentId": payment_id,
+                    "serviceResponse": service_response,
+                }
             )
 
-        if payment_state == "approved":
-            await cart_service.clear_cart_by_session_token(redis_client, session_token)
-
-        # Persist replay payload for future retries with same idempotency key.
-        service_response = {
-            "status": True,
-            "message": (
-                "Checkout confirmed"
-                if payment_state == "approved"
-                else "Checkout created with pending payment"
-            ),
-            "data": {
-                "orderId": order_id,
-                "paymentId": payment_id,
-                "paymentStatus": payment_state,
-            },
-        }
-
-        final_payload = {
-            "key": idempotency_key,
-            "state": "succeeded",
-            "requestHash": request_hash,
-            "orderId": order_id,
-            "paymentId": payment_id,
-            "serviceResponse": service_response,
-        }
-
-        await idempotency_service.save_payload(redis_client, redis_key, final_payload)
-
-        return service_response
+            return service_response
 
     except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
         # Release processing key so caller can retry after schema fix.
@@ -303,6 +260,23 @@ async def confirm_checkout(
 
     except Exception as e:
         logger.exception(e)
+
+        if redis_key and request_hash and order_id and payment_id:
+            fallback_response = _error_response("Internal server error")
+            await idempotency_service.save_payload(
+                redis_client,
+                redis_key,
+                {
+                    "key": idempotency_key,
+                    "state": "failed",
+                    "requestHash": request_hash,
+                    "orderId": order_id,
+                    "paymentId": payment_id,
+                    "serviceResponse": fallback_response,
+                }
+            )
+
+            return fallback_response
 
         # Release processing key on unexpected failures.
         if redis_key:
