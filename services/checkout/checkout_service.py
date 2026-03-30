@@ -14,9 +14,43 @@ def _error_response(message: str) -> dict[str, Any]:
     return {"status": False, "message": message, "data": {}}
 
 
+async def _handle_error(
+        redis_client,
+        redis_key,
+        idempotency_service,
+        idempotency_key: str,
+        request_hash: str,
+        order_id: int,
+        payment_id: int,
+        error_message: str,
+) -> dict[str, Any]:
+    response = _error_response(error_message)
+
+    if redis_key and request_hash and order_id and payment_id:
+        await idempotency_service.save_payload(
+            redis_client,
+            redis_key,
+            {
+                "key": idempotency_key,
+                "state": "failed",
+                "requestHash": request_hash,
+                "orderId": order_id,
+                "paymentId": payment_id,
+                "serviceResponse": response,
+            }
+        )
+        return response
+    # Release processing key on unexpected failures.
+
+    if redis_key:
+        await redis_client.delete(redis_key)
+
+    return response
+
+
 async def build_checkout_context(
-    conn: asyncpg.Connection,
-    session_context: CartSessionContext,
+        conn: asyncpg.Connection,
+        session_context: CartSessionContext,
 ) -> dict[str, Any]:
     try:
         cart = session_context["session"]
@@ -35,7 +69,8 @@ async def build_checkout_context(
             """
             SELECT 1
             FROM tables
-            WHERE id = $1 AND is_active = TRUE
+            WHERE id = $1
+              AND is_active = TRUE
             """,
             table_id,
         )
@@ -47,15 +82,14 @@ async def build_checkout_context(
 
         product_rows = await conn.fetch(
             """
-            SELECT
-                p.id,
-                p.name,
-                p.price,
-                p.is_active,
-                p.is_available,
-                ci.quantity
+            SELECT p.id,
+                   p.name,
+                   p.price,
+                   p.is_active,
+                   p.is_available,
+                   ci.quantity
             FROM unnest($1::int[], $2::int[]) AS ci(product_id, quantity)
-            JOIN products p ON p.id = ci.product_id
+                     JOIN products p ON p.id = ci.product_id
             """,
             product_ids,
             quantities,
@@ -108,10 +142,10 @@ async def build_checkout_context(
 
 
 async def start_stripe_checkout(
-    conn: asyncpg.Connection,
-    redis_client,
-    checkout_context: CheckoutContextData,
-    idempotency_key: str,
+        conn: asyncpg.Connection,
+        redis_client,
+        checkout_context: CheckoutContextData,
+        idempotency_key: str,
 ) -> dict[str, Any]:
     # Keep this in outer scope so failure handlers can clean it up.
     redis_key = None
@@ -133,8 +167,7 @@ async def start_stripe_checkout(
             order_row = await conn.fetchrow(
                 """
                 INSERT INTO orders (table_id, subtotal, total, status)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id
+                VALUES ($1, $2, $3, $4) RETURNING id
                 """,
                 checkout_context["tableId"],
                 checkout_context["subtotal"],
@@ -142,7 +175,7 @@ async def start_stripe_checkout(
                 "pending",
             )
             if not order_row:
-                return _error_response("Failed to create order")
+                raise ValueError("Failed to create order")
 
             order_id = order_row["id"]
 
@@ -160,14 +193,12 @@ async def start_stripe_checkout(
 
             await conn.executemany(
                 """
-                INSERT INTO order_items (
-                    order_id,
-                    product_id,
-                    name,
-                    quantity,
-                    unit_price,
-                    line_total
-                )
+                INSERT INTO order_items (order_id,
+                                         product_id,
+                                         name,
+                                         quantity,
+                                         unit_price,
+                                         line_total)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 order_items_params,
@@ -176,110 +207,100 @@ async def start_stripe_checkout(
             payment_row = await conn.fetchrow(
                 """
                 INSERT INTO payments (order_id, amount, status)
-                VALUES ($1, $2, $3)
-                RETURNING id
+                VALUES ($1, $2, $3) RETURNING id
                 """,
                 order_id,
                 checkout_context["total"],
                 "pending",
             )
             if not payment_row:
-                return _error_response("Failed to create payment")
+                raise ValueError("Failed to create payment")
 
             payment_id = payment_row["id"]
 
-            stripe_response = await payment_service.start_stripe_checkout_session(
-                checkout_context=checkout_context,
-                order_id=order_id,
-                payment_id=payment_id,
-                idempotency_key=idempotency_key,
-            )
 
-            if not stripe_response["status"]:
-                await conn.execute(
-                    "UPDATE payments SET status = $1 WHERE id = $2",
-                    "failed",
-                    payment_id,
-                )
+        stripe_response = await payment_service.start_stripe_checkout_session(
+            checkout_context=checkout_context,
+            order_id=order_id,
+            payment_id=payment_id,
+            idempotency_key=idempotency_key,
+        )
 
-                service_response = _error_response(stripe_response["message"])
-                await idempotency_service.save_payload(
-                    redis_client,
-                    redis_key,{
-                        "key": idempotency_key,
-                        "state": "failed",
-                        "requestHash": request_hash,
-                        "orderId": order_id,
-                        "paymentId": payment_id,
-                        "serviceResponse": service_response,
-                    }
-                )
-                return service_response
-
-            stripe_data = stripe_response["data"]
-
+        if not stripe_response["status"]:
             await conn.execute(
-                "UPDATE payments SET status = $1, checkoutSessionId = $2, checkoutUrl = $3 WHERE id = $4",
-                "requires_action",
-                stripe_data["checkoutSessionId"],
-                stripe_data["checkoutUrl"],
+                "UPDATE payments SET status = $1 WHERE id = $2",
+                "failed",
                 payment_id,
             )
 
-            service_response = {
-                "status": True,
-                "message": "Stripe checkout in progress",
-                "data": {
-                    "checkoutUrl": stripe_data["checkoutUrl"]
-                }
-            }
-
+            service_response = _error_response(stripe_response["message"])
             await idempotency_service.save_payload(
                 redis_client,
-                redis_key,
-                {
+                redis_key, {
                     "key": idempotency_key,
-                    "state": "completed",
+                    "state": "failed",
                     "requestHash": request_hash,
                     "orderId": order_id,
                     "paymentId": payment_id,
                     "serviceResponse": service_response,
                 }
             )
-
             return service_response
 
-    except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
-        # Release processing key so caller can retry after schema fix.
-        if redis_key:
-            await redis_client.delete(redis_key)
+        stripe_data = stripe_response["data"]
 
-        return _error_response(
-            "Checkout tables are not configured in database schema"
+        await conn.execute(
+            "UPDATE payments SET status = $1, checkoutSessionId = $2, checkoutUrl = $3 WHERE id = $4",
+            "requires_action",
+            stripe_data["checkoutSessionId"],
+            stripe_data["checkoutUrl"],
+            payment_id,
         )
 
+        service_response = {
+            "status": True,
+            "message": "Stripe checkout in progress",
+            "data": {
+                "checkoutUrl": stripe_data["checkoutUrl"]
+            }
+        }
+
+        await idempotency_service.save_payload(
+            redis_client,
+            redis_key,
+            {
+                "key": idempotency_key,
+                "state": "completed",
+                "requestHash": request_hash,
+                "orderId": order_id,
+                "paymentId": payment_id,
+                "serviceResponse": service_response,
+            }
+        )
+
+        return service_response
+    except ValueError as e:
+        logger.error(e)
+        return await _handle_error(
+            redis_client,
+            redis_key,
+            idempotency_service,
+            idempotency_key,
+            request_hash,
+            order_id,
+            payment_id,
+            str(e),
+        )
     except Exception as e:
-        logger.exception(e)
+        logger.error(e)
 
-        if redis_key and request_hash and order_id and payment_id:
-            fallback_response = _error_response("Internal server error")
-            await idempotency_service.save_payload(
-                redis_client,
-                redis_key,
-                {
-                    "key": idempotency_key,
-                    "state": "failed",
-                    "requestHash": request_hash,
-                    "orderId": order_id,
-                    "paymentId": payment_id,
-                    "serviceResponse": fallback_response,
-                }
-            )
-
-            return fallback_response
-
-        # Release processing key on unexpected failures.
-        if redis_key:
-            await redis_client.delete(redis_key)
-
-        return _error_response("Internal server error")
+        return await _handle_error(
+            redis_client,
+            redis_key,
+            idempotency_service,
+            idempotency_key,
+            request_hash,
+            order_id,
+            payment_id,
+            "Internal server error",
+        )
