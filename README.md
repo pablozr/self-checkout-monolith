@@ -12,12 +12,13 @@ API em FastAPI para fluxo de self-checkout em restaurante: autenticação, gest�
 - Bootstrap de sessao anonima por mesa (`/menu?table=<numero>`)
 - Carrinho anonimo em Redis (`/cart`, add/update/remove/clear)
 - Catalogo ativo vindo do Postgres, com cache por produto no Redis
+- Checkout Stripe iniciado com idempotencia (`POST /checkout/stripe`)
+- Webhook Stripe para conciliacao de pagamento e evento SSE admin (`POST /webhooks/stripe`)
 
 ### Ainda nao implementado neste repo
 
-- Checkout/pagamento
-- Persistencia de pedido em tabela `orders`
 - Integracoes de cozinha/comanda/impressao
+- Fluxo de estorno/refund
 
 ## Stack
 
@@ -49,13 +50,20 @@ Sem ORM: consultas SQL diretas, com placeholders `$1`, `$2`, etc.
 │   ├── auth/router.py
 │   ├── users/router.py
 │   ├── menu/router.py
-│   └── cart/router.py
+│   ├── cart/router.py
+│   ├── checkout/router.py
+│   ├── webhooks/router.py
+│   └── realtime/router.py
 ├── services/
 │   ├── auth/
 │   ├── user/
 │   ├── catalog/
 │   ├── table/
 │   ├── cart/
+│   ├── checkout/
+│   ├── payment/
+│   ├── order/
+│   ├── stripe/
 │   ├── cache/
 │   └── messaging/
 ├── schemas/
@@ -151,6 +159,7 @@ Use o arquivo `.env.example` como base. Blocos principais:
 ### Webhooks
 
 - `POST /webhooks/stripe`
+- Politica de resposta: `200` para evento processado/duplicado/invalido de negocio, `400` para assinatura invalida, `500` para erro interno
 
 ## Regras importantes de seguranca
 
