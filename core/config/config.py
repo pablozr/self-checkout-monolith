@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     STRIPE_CHECKOUT_SUCCESS_URL: str = "http://localhost:3000/checkout/success"
     STRIPE_CHECKOUT_CANCEL_URL: str = "http://localhost:3000/checkout/cancel"
     STRIPE_CURRENCY: str = "chf"
+    STRIPE_WEBHOOK_SECRET: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

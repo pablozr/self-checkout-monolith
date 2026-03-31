@@ -3,9 +3,9 @@ from typing import Any
 
 import asyncpg
 
-from schemas.checkout import CheckoutContextData
-from services.stripe import stripe_service
+from schemas.checkout import CheckoutContextData, CheckoutCompletedData
 from services.shared.money import normalize_amount
+from services.stripe import stripe_service
 
 
 async def create_payment(
@@ -26,6 +26,37 @@ async def create_payment(
         raise ValueError("Failed to create payment")
 
     return int(payment_id)
+
+
+async def update_payment_status(
+    conn: asyncpg.Connection,
+    data: CheckoutCompletedData,
+    status: str,
+    allowed_current_statuses: tuple[str, ...] = ("pending", "requires_action"),
+) -> bool:
+    query = """
+            UPDATE payments
+            SET status = $1,
+                provider_payment_id = COALESCE(provider_payment_id, $2),
+                checkout_session_id = COALESCE(checkout_session_id, $3),
+                updated_at = NOW()
+            WHERE id = $4
+              AND order_id = $5
+              AND status = ANY($6::text[])
+            RETURNING id
+            """
+
+    row = await conn.fetchrow(
+        query,
+        status,
+        data.payment_intent_id,
+        data.checkout_session_id,
+        data.payment_id,
+        data.order_id,
+        list(allowed_current_statuses),
+    )
+
+    return row is not None
 
 
 async def start_stripe_checkout_session(

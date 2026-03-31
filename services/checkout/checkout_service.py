@@ -214,7 +214,7 @@ async def start_stripe_checkout(
         stripe_data = stripe_response["data"]
 
         await conn.execute(
-            "UPDATE payments SET status = $1, checkoutSessionId = $2, checkoutUrl = $3 WHERE id = $4",
+            "UPDATE payments SET status = $1, checkout_session_id = $2, checkout_url = $3, updated_at = NOW() WHERE id = $4",
             "requires_action",
             stripe_data["checkoutSessionId"],
             stripe_data["checkoutUrl"],

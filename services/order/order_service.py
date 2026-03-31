@@ -113,3 +113,22 @@ async def get_comanda(conn: asyncpg.Connection, order_id: int) -> dict[str, Any]
     if not row:
         return {"status": False, "message": "Error retrieving order", "data": {}}
     return {"status": True, "message": "Order retrieved successfully", "data": {**row}}
+
+
+async def update_order_status(
+    conn: asyncpg.Connection,
+    order_id: int,
+    new_status: str,
+    allowed_current_statuses: tuple[str, ...] = ("pending",),
+) -> bool:
+    query = """
+            UPDATE orders
+            SET status = $1,
+                updated_at = NOW()
+            WHERE id = $2
+              AND status = ANY($3::text[])
+            RETURNING id
+            """
+
+    row = await conn.fetchrow(query, new_status, order_id, list(allowed_current_statuses))
+    return row is not None
