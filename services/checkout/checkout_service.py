@@ -8,6 +8,7 @@ from schemas.cart import CartSessionContext
 from schemas.checkout import CheckoutContextData, CheckoutItemData
 from services.idempotency import idempotency_service
 from services.payment import payment_service
+from services.order import order_service
 
 
 def _error_response(message: str) -> dict[str, Any]:
@@ -16,12 +17,12 @@ def _error_response(message: str) -> dict[str, Any]:
 
 async def _handle_error(
         redis_client,
-        redis_key,
+        redis_key: str | None,
         idempotency_service,
         idempotency_key: str,
-        request_hash: str,
-        order_id: int,
-        payment_id: int,
+        request_hash: str | None,
+        order_id: int | None,
+        payment_id: int | None,
         error_message: str,
 ) -> dict[str, Any]:
     response = _error_response(error_message)
@@ -164,60 +165,24 @@ async def start_stripe_checkout(
 
         # Create order aggregate atomically before touching payment provider.
         async with conn.transaction():
-            order_row = await conn.fetchrow(
-                """
-                INSERT INTO orders (table_id, subtotal, total, status)
-                VALUES ($1, $2, $3, $4) RETURNING id
-                """,
-                checkout_context["tableId"],
-                checkout_context["subtotal"],
-                checkout_context["total"],
-                "pending",
-            )
-            if not order_row:
-                raise ValueError("Failed to create order")
-
-            order_id = order_row["id"]
-
-            order_items_params = [
-                (
-                    order_id,
-                    item["productId"],
-                    item["name"],
-                    item["quantity"],
-                    item["unitPrice"],
-                    item["lineTotal"],
-                )
-                for item in checkout_context["items"]
-            ]
-
-            await conn.executemany(
-                """
-                INSERT INTO order_items (order_id,
-                                         product_id,
-                                         name,
-                                         quantity,
-                                         unit_price,
-                                         line_total)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                order_items_params,
+            order_id = await order_service.create_order_with_items(
+                conn=conn,
+                table_id=checkout_context["tableId"],
+                subtotal=checkout_context["subtotal"],
+                total=checkout_context["total"],
+                status="pending",
+                items=checkout_context["items"],
             )
 
-            payment_row = await conn.fetchrow(
-                """
-                INSERT INTO payments (order_id, amount, status)
-                VALUES ($1, $2, $3) RETURNING id
-                """,
-                order_id,
-                checkout_context["total"],
-                "pending",
+            payment_id = await payment_service.create_payment(
+                conn=conn,
+                order_id=order_id,
+                amount=checkout_context["total"],
+                status="pending",
             )
-            if not payment_row:
-                raise ValueError("Failed to create payment")
 
-            payment_id = payment_row["id"]
-
+        if order_id is None or payment_id is None:
+            raise ValueError("Failed to initialize checkout records")
 
         stripe_response = await payment_service.start_stripe_checkout_session(
             checkout_context=checkout_context,
