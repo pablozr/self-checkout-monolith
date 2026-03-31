@@ -91,8 +91,7 @@ async def initiate_checkout_session(
         metadata = {
             "orderId": str(order_id),
             "paymentId": str(payment_id),
-            "tableId": str(checkout_context["tableId"]),
-            "sessionToken": checkout_context["sessionToken"],
+            "tableId": str(checkout_context["tableId"])
         }
 
         session_params: dict[str, Any] = {

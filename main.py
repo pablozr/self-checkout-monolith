@@ -12,6 +12,7 @@ from core.sse.sse_manager import sse_manager
 from routes.realtime.router import router as realtime_router
 from routes.auth.router import router as auth_router
 from routes.cart.router import router as cart_router
+from routes.checkout.router import router as checkout_router
 from routes.menu.router import router as menu_router
 from routes.users.router import router as users_router
 from routes.webhooks.router import router as webhooks_router
@@ -55,6 +56,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(users_router, prefix="/users", tags=["users"])
 app.include_router(menu_router, prefix="/menu", tags=["menu"])
 app.include_router(cart_router, prefix="/cart", tags=["cart"])
+app.include_router(checkout_router, prefix="/checkout", tags=["checkout"])
 app.include_router(realtime_router, prefix="/admin/realtime", tags=["realtime"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 

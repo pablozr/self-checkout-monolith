@@ -146,6 +146,11 @@ Use o arquivo `.env.example` como base. Blocos principais:
 - `PUT /cart/items/{product_id}`
 - `DELETE /cart/items/{product_id}`
 - `DELETE /cart/`
+- `POST /checkout/stripe` (exige header `Idempotency-Key`)
+
+### Webhooks
+
+- `POST /webhooks/stripe`
 
 ## Regras importantes de seguranca
 
@@ -158,6 +163,10 @@ Use o arquivo `.env.example` como base. Blocos principais:
 - `users`
 - `tables`
 - `products`
+- `orders`
+- `order_items`
+- `payments`
+- `stripe_events`
 
 ## Como testar fluxo principal rapido
 
