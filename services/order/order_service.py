@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any, Sequence
 
 import asyncpg
@@ -9,8 +10,8 @@ from schemas.order import OrderItemInsert
 async def create_order(
     conn: asyncpg.Connection,
     table_id: int,
-    subtotal: float,
-    total: float,
+    subtotal: Decimal,
+    total: Decimal,
     status: str,
 ) -> int:
     query = """
@@ -56,8 +57,8 @@ async def create_order_items(
 async def create_order_with_items(
     conn: asyncpg.Connection,
     table_id: int,
-    subtotal: float,
-    total: float,
+    subtotal: Decimal,
+    total: Decimal,
     status: str,
     items: Sequence[CheckoutItemData],
 ) -> int:

@@ -1,3 +1,4 @@
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import asyncpg
@@ -8,7 +9,7 @@ from schemas.checkout import CheckoutContextData
 async def create_payment(
     conn: asyncpg.Connection,
     order_id: int,
-    amount: float,
+    amount: Decimal,
     status: str,
 ) -> int:
     query = """
@@ -17,7 +18,8 @@ async def create_payment(
             RETURNING id
             """
 
-    payment_id = await conn.fetchval(query, order_id, amount, status)
+    normalized_amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    payment_id = await conn.fetchval(query, order_id, normalized_amount, status)
     if payment_id is None:
         raise ValueError("Failed to create payment")
 

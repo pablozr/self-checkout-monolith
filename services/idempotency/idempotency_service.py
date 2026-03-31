@@ -1,5 +1,6 @@
 import hashlib
 import json
+from decimal import Decimal
 from typing import Any
 
 from core.config.config import CHECKOUT_IDEMPOTENCY_TTL_SECONDS, REDIS_IDEMPOTENCY_PREFIX
@@ -11,8 +12,22 @@ def build_checkout_idempotency_key(idempotency_key: str, session_token: str) -> 
     return f"{REDIS_IDEMPOTENCY_PREFIX}:{session_token}:{idempotency_key}"
 
 
+def _serialize_hash_payload(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return format(value, "f")
+
+    if isinstance(value, dict):
+        return {key: _serialize_hash_payload(item) for key, item in value.items()}
+
+    if isinstance(value, list):
+        return [_serialize_hash_payload(item) for item in value]
+
+    return value
+
+
 def build_request_hash(payload: CheckoutContextData) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    serialized_payload = _serialize_hash_payload(payload)
+    serialized = json.dumps(serialized_payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 

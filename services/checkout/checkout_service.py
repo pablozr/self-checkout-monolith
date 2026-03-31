@@ -108,7 +108,7 @@ async def build_checkout_context(
             if not row["is_active"] or not row["is_available"]:
                 return _error_response(f"Product {row['id']} unavailable")
 
-            unit_price = Decimal(str(row["price"]))
+            unit_price = Decimal(str(row["price"])).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             quantity = row["quantity"]
             line_total = (unit_price * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal = (subtotal + line_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -118,8 +118,8 @@ async def build_checkout_context(
                     "productId": row["id"],
                     "name": row["name"],
                     "quantity": quantity,
-                    "unitPrice": float(unit_price),
-                    "lineTotal": float(line_total),
+                    "unitPrice": unit_price,
+                    "lineTotal": line_total,
                 }
             )
 
@@ -127,8 +127,8 @@ async def build_checkout_context(
             "sessionToken": token,
             "tableId": table_id,
             "items": validated_items,
-            "subtotal": float(subtotal),
-            "total": float(subtotal),
+            "subtotal": subtotal,
+            "total": subtotal,
         }
 
         return {
