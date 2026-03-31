@@ -119,6 +119,7 @@ Use o arquivo `.env.example` como base. Blocos principais:
 - JWT: `SECRET_KEY`, `ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`
 - SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`
 - Google: `GOOGLE_CLIENT_ID`
+- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_CHECKOUT_SUCCESS_URL`, `STRIPE_CHECKOUT_CANCEL_URL`, `STRIPE_CURRENCY`
 
 ## Endpoints disponiveis hoje
 

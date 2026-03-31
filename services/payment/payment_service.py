@@ -4,6 +4,7 @@ from typing import Any
 import asyncpg
 
 from schemas.checkout import CheckoutContextData
+from services.stripe import stripe_service
 
 
 async def create_payment(
@@ -32,9 +33,9 @@ async def start_stripe_checkout_session(
     payment_id: int,
     idempotency_key: str,
 ) -> dict[str, Any]:
-    _ = checkout_context, order_id, payment_id, idempotency_key
-    return {
-        "status": False,
-        "message": "Stripe checkout session is not implemented",
-        "data": {},
-    }
+    return await stripe_service.initiate_checkout_session(
+        checkout_context=checkout_context,
+        order_id=order_id,
+        payment_id=payment_id,
+        idempotency_key=idempotency_key,
+    )

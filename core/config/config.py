@@ -33,6 +33,11 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str
 
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_CHECKOUT_SUCCESS_URL: str = "http://localhost:3000/checkout/success"
+    STRIPE_CHECKOUT_CANCEL_URL: str = "http://localhost:3000/checkout/cancel"
+    STRIPE_CURRENCY: str = "chf"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
