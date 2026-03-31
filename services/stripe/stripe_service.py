@@ -1,5 +1,4 @@
 import asyncio
-from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import stripe
@@ -7,20 +6,13 @@ import stripe
 from core.config.config import settings
 from core.logger.logger import logger
 from schemas.checkout import CheckoutContextData, CheckoutItemData
-
-
-def _error_response(message: str) -> dict[str, Any]:
-    return {"status": False, "message": message, "data": {}}
-
-
-def _to_minor_units(amount: Decimal) -> int:
-    normalized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return int((normalized * 100).to_integral_value(rounding=ROUND_HALF_UP))
+from services.shared.money import to_minor_units
+from services.shared.response import error_response
 
 
 def _build_line_items(
-    items: list[CheckoutItemData],
-    currency: str,
+        items: list[CheckoutItemData],
+        currency: str,
 ) -> list[dict[str, Any]]:
     line_items: list[dict[str, Any]] = []
 
@@ -33,7 +25,7 @@ def _build_line_items(
                 "quantity": item["quantity"],
                 "price_data": {
                     "currency": currency,
-                    "unit_amount": _to_minor_units(item["unitPrice"]),
+                    "unit_amount": to_minor_units(item["unitPrice"]),
                     "product_data": {"name": item["name"]},
                 },
             }
@@ -60,8 +52,8 @@ def _build_urls(order_id: int, payment_id: int) -> tuple[str, str]:
 
 
 def _create_checkout_session(
-    params: dict[str, Any],
-    idempotency_key: str,
+        params: dict[str, Any],
+        idempotency_key: str,
 ) -> stripe.checkout.Session:
     client = stripe.StripeClient(settings.STRIPE_SECRET_KEY)
 
@@ -74,25 +66,25 @@ def _create_checkout_session(
 
 
 async def initiate_checkout_session(
-    checkout_context: CheckoutContextData,
-    order_id: int,
-    payment_id: int,
-    idempotency_key: str,
+        checkout_context: CheckoutContextData,
+        order_id: int,
+        payment_id: int,
+        idempotency_key: str,
 ) -> dict[str, Any]:
     try:
         if not settings.STRIPE_SECRET_KEY:
-            return _error_response("Stripe secret key is not configured")
+            return error_response("Stripe secret key is not configured")
 
         if not settings.STRIPE_CHECKOUT_SUCCESS_URL or not settings.STRIPE_CHECKOUT_CANCEL_URL:
-            return _error_response("Stripe checkout URLs are not configured")
+            return error_response("Stripe checkout URLs are not configured")
 
         currency = settings.STRIPE_CURRENCY.strip().lower()
         if len(currency) != 3:
-            return _error_response("Invalid Stripe currency configuration")
+            return error_response("Invalid Stripe currency configuration")
 
         line_items = _build_line_items(checkout_context["items"], currency)
         if not line_items:
-            return _error_response("Cart is empty")
+            return error_response("Cart is empty")
 
         success_url, cancel_url = _build_urls(order_id, payment_id)
 
@@ -113,6 +105,7 @@ async def initiate_checkout_session(
             "payment_intent_data": {"metadata": metadata},
         }
 
+        # Stripe's Python library does not support async, so we run the blocking call in a thread to avoid blocking the event loop.
         session = await asyncio.to_thread(
             _create_checkout_session,
             session_params,
@@ -124,7 +117,7 @@ async def initiate_checkout_session(
         payment_intent_id = getattr(session, "payment_intent", None)
 
         if not checkout_session_id or not checkout_url:
-            return _error_response("Stripe returned an invalid checkout session")
+            return error_response("Stripe returned an invalid checkout session")
 
         return {
             "status": True,
@@ -138,10 +131,10 @@ async def initiate_checkout_session(
     except stripe.StripeError as e:
         logger.exception(e)
         message = getattr(e, "user_message", None) or str(e)
-        return _error_response(message)
+        return error_response(message)
     except ValueError as e:
         logger.error(e)
-        return _error_response(str(e))
+        return error_response(str(e))
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")

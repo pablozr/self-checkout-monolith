@@ -6,6 +6,7 @@ from typing import Any
 from core.config.config import CHECKOUT_IDEMPOTENCY_TTL_SECONDS, REDIS_IDEMPOTENCY_PREFIX
 from schemas.checkout import CheckoutContextData
 from services.cache import cache_service
+from services.shared.response import error_response
 
 
 def build_checkout_idempotency_key(idempotency_key: str, session_token: str) -> str:
@@ -31,9 +32,6 @@ def build_request_hash(payload: CheckoutContextData) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _error_response(message: str) -> dict[str, Any]:
-    return {"status": False, "message": message, "data": {}}
-
 
 def _resolve_replay_response(
     payload: dict[str, Any] | bool,
@@ -44,7 +42,7 @@ def _resolve_replay_response(
 
     existing_hash = payload.get("requestHash")
     if existing_hash and existing_hash != request_hash:
-        return _error_response("Idempotency key already used with a different payload")
+        return error_response("Idempotency key already used with a different payload")
 
     return build_replay_response(payload)
 
@@ -89,7 +87,7 @@ async def initialize_checkout_request(
     return (
         redis_key,
         request_hash,
-        _error_response("Checkout request already in progress"),
+        error_response("Checkout request already in progress"),
     )
 
 

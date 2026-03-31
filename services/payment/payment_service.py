@@ -1,10 +1,11 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 
 import asyncpg
 
 from schemas.checkout import CheckoutContextData
 from services.stripe import stripe_service
+from services.shared.money import normalize_amount
 
 
 async def create_payment(
@@ -19,7 +20,7 @@ async def create_payment(
             RETURNING id
             """
 
-    normalized_amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    normalized_amount = normalize_amount(amount)
     payment_id = await conn.fetchval(query, order_id, normalized_amount, status)
     if payment_id is None:
         raise ValueError("Failed to create payment")

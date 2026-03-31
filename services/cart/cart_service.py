@@ -16,6 +16,7 @@ from schemas.cart import (
 from schemas.product import ProductData
 from services.cache import cache_service
 from services.catalog import catalog_service
+from services.shared.response import error_response
 
 
 def _session_key(token: str) -> str:
@@ -30,9 +31,6 @@ def _recalculate_subtotal(items: list[CartItemData]) -> float:
     subtotal = sum(float(item["lineTotal"]) for item in items)
     return round(subtotal, 2)
 
-
-def _error_response(message: str) -> dict[str, Any]:
-    return {"status": False, "message": message, "data": {}}
 
 
 def _to_cache_payload(cart: CartData) -> dict[str, Any]:
@@ -80,7 +78,7 @@ async def bootstrap_session(
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def get_cart(session_context: CartSessionContext) -> dict[str, Any]:
@@ -94,7 +92,7 @@ async def get_cart(session_context: CartSessionContext) -> dict[str, Any]:
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def add_item(
@@ -112,7 +110,7 @@ async def add_item(
             conn, product_id, redis_client
         )
         if not product_response["status"]:
-            return _error_response(product_response["message"])
+            return error_response(product_response["message"])
 
         product = cast(ProductData, product_response["data"]["product"])
         items = session["items"]
@@ -156,7 +154,7 @@ async def add_item(
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def update_item_quantity(
@@ -172,7 +170,7 @@ async def update_item_quantity(
         items = session["items"]
         item = next((i for i in items if i["productId"] == product_id), None)
         if not item:
-            return _error_response("Item not found in cart")
+            return error_response("Item not found in cart")
 
         item["quantity"] = quantity
         item["lineTotal"] = round(item["unitPrice"] * quantity, 2)
@@ -192,7 +190,7 @@ async def update_item_quantity(
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def remove_item(
@@ -208,7 +206,7 @@ async def remove_item(
         new_items = [item for item in items if item["productId"] != product_id]
 
         if len(new_items) == len(items):
-            return _error_response("Item not found in cart")
+            return error_response("Item not found in cart")
 
         session["items"] = new_items
         session["subtotal"] = _recalculate_subtotal(new_items)
@@ -227,7 +225,7 @@ async def remove_item(
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def clear_cart(redis_client, session_context: CartSessionContext) -> dict[str, Any]:
@@ -252,7 +250,7 @@ async def clear_cart(redis_client, session_context: CartSessionContext) -> dict[
         }
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def clear_cart_by_session_token(
@@ -262,7 +260,7 @@ async def clear_cart_by_session_token(
     try:
         session_raw = await cache_service.get_by_key(_session_key(session_token), redis_client)
         if not is_cart_data(session_raw):
-            return _error_response("Session not found")
+            return error_response("Session not found")
 
         session_context: CartSessionContext = {
             "token": session_token,
@@ -272,4 +270,4 @@ async def clear_cart_by_session_token(
         return await clear_cart(redis_client, session_context)
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")

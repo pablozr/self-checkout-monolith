@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 
 import asyncpg
@@ -9,10 +9,9 @@ from schemas.checkout import CheckoutContextData, CheckoutItemData
 from services.idempotency import idempotency_service
 from services.payment import payment_service
 from services.order import order_service
+from services.shared.money import normalize_amount
+from services.shared.response import error_response
 
-
-def _error_response(message: str) -> dict[str, Any]:
-    return {"status": False, "message": message, "data": {}}
 
 
 async def _handle_error(
@@ -25,7 +24,7 @@ async def _handle_error(
         payment_id: int | None,
         error_message: str,
 ) -> dict[str, Any]:
-    response = _error_response(error_message)
+    response = error_response(error_message)
 
     if redis_key and request_hash and order_id and payment_id:
         await idempotency_service.save_payload(
@@ -60,11 +59,11 @@ async def build_checkout_context(
         cart_items = cart["items"]
 
         if not cart_items:
-            return _error_response("Cart is empty")
+            return error_response("Cart is empty")
 
         for item in cart_items:
             if item["quantity"] <= 0:
-                return _error_response(f"Invalid quantity for product {item['productId']}")
+                return error_response(f"Invalid quantity for product {item['productId']}")
 
         table_row = await conn.fetchrow(
             """
@@ -76,7 +75,7 @@ async def build_checkout_context(
             table_id,
         )
         if not table_row:
-            return _error_response("Table not found or inactive")
+            return error_response("Table not found or inactive")
 
         product_ids = [item["productId"] for item in cart_items]
         quantities = [item["quantity"] for item in cart_items]
@@ -99,19 +98,19 @@ async def build_checkout_context(
         if len(product_rows) != len(cart_items):
             found_ids = {row["id"] for row in product_rows}
             missing = [pid for pid in product_ids if pid not in found_ids]
-            return _error_response(f"Product(s) not found: {missing}")
+            return error_response(f"Product(s) not found: {missing}")
 
         validated_items: list[CheckoutItemData] = []
         subtotal = Decimal("0.00")
 
         for row in product_rows:
             if not row["is_active"] or not row["is_available"]:
-                return _error_response(f"Product {row['id']} unavailable")
+                return error_response(f"Product {row['id']} unavailable")
 
-            unit_price = Decimal(str(row["price"])).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            unit_price = normalize_amount(Decimal(str(row["price"])))
             quantity = row["quantity"]
-            line_total = (unit_price * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            subtotal = (subtotal + line_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            line_total = normalize_amount(unit_price * quantity)
+            subtotal = normalize_amount(subtotal + line_total)
 
             validated_items.append(
                 {
@@ -139,7 +138,7 @@ async def build_checkout_context(
 
     except Exception as e:
         logger.exception(e)
-        return _error_response("Internal server error")
+        return error_response("Internal server error")
 
 
 async def start_stripe_checkout(
@@ -198,7 +197,7 @@ async def start_stripe_checkout(
                 payment_id,
             )
 
-            service_response = _error_response(stripe_response["message"])
+            service_response = error_response(stripe_response["message"])
             await idempotency_service.save_payload(
                 redis_client,
                 redis_key, {
