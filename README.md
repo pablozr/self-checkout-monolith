@@ -71,49 +71,99 @@ Sem ORM: consultas SQL diretas, com placeholders `$1`, `$2`, etc.
 ├── schema.sql
 ├── .env.example
 ├── main.py
-└── requirements.txt
+├── docker-compose.yml
+├── Dockerfile
+├── .dockerignore
+├── requirements.txt
+├── requirements-dev.txt
+├── Makefile
+└── .github/workflows/ci.yml
 ```
 
-## Setup rapido
+## Setup rapido (Docker Compose)
 
-1. Criar e ativar venv
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
-
-2. Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-3. Criar `.env` a partir do exemplo
+1. Criar `.env` a partir do exemplo
 
 ```bash
 copy .env.example .env
 ```
 
-4. Subir infraestrutura (Postgres, Redis, RabbitMQ) e aplicar schema
+2. Subir stack completa (Postgres + Redis + RabbitMQ + API + worker)
 
 ```bash
-psql -U postgres -d your_db -f schema.sql
+docker compose up -d --build
 ```
 
-## Rodando a API
+3. Aplicar schema no Postgres local
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+psql -h localhost -U postgres -d self_checkout -f schema.sql
+```
+
+4. Conferir status dos servicos
+
+```bash
+docker compose ps
+```
+
+## Rodando em containers (recomendado)
+
+```bash
+docker compose up -d --build
+docker compose logs -f api
+docker compose logs -f worker_smtp
 ```
 
 - Swagger: `http://localhost:8000/docs`
 - OpenAPI: `http://localhost:8000/openapi.json`
+- RabbitMQ Management: `http://localhost:15672`
 
-## Worker de email
+## Rodando no host (API/worker fora do container)
+
+1. Subir somente as dependencias:
 
 ```bash
+docker compose up -d postgres redis rabbitmq
+```
+
+2. Criar e ativar venv + instalar dependencias:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. Rodar API e worker:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 python -m workers.smtp.email_worker
+```
+
+## Comandos padrao (Makefile)
+
+```bash
+make up      # sobe stack completa com build
+make logs    # acompanha logs de api e worker
+make lint    # ruff check .
+make test    # pytest -q
+make check   # lint + test
+make down    # derruba containers
+```
+
+## CI (GitHub Actions)
+
+O workflow em `.github/workflows/ci.yml` roda em `push` e `pull_request` com:
+
+- `ruff check .`
+- `pytest -q`
+
+Para reproduzir localmente o mesmo gate de qualidade:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+make check
 ```
 
 ## Script de carga real
@@ -145,7 +195,7 @@ Use o arquivo `.env.example` como base. Blocos principais:
 - Aplicacao: `ENVIRONMENT`, `API_PORT`
 - DB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
-- Rabbit: `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`
+- Rabbit: `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `RABBITMQ_MANAGEMENT_PORT`
 - JWT: `SECRET_KEY`, `ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`
 - SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`
 - Google: `GOOGLE_CLIENT_ID`
