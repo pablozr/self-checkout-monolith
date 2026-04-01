@@ -1,8 +1,10 @@
+import asyncio
 from decimal import Decimal
 
 import pytest
 
 from core.config.config import CHECKOUT_IDEMPOTENCY_TTL_SECONDS
+from schemas.checkout import CheckoutContextData
 from services.idempotency import idempotency_service
 
 
@@ -23,7 +25,21 @@ class FakeRedis:
         return self.set_result
 
 
-def build_checkout_context(total: str = "12.50"):
+class FakeConcurrentRedis:
+    def __init__(self):
+        self.store = {}
+        self.lock = asyncio.Lock()
+
+    async def set(self, key, value, ex=None, nx=None):
+        async with self.lock:
+            if nx and key in self.store:
+                return False
+
+            self.store[key] = value
+            return True
+
+
+def build_checkout_context(total: str = "12.50") -> CheckoutContextData:
     decimal_total = Decimal(total)
     return {
         "sessionToken": "session-123",
@@ -147,3 +163,60 @@ async def test_initialize_checkout_request_errors_when_lock_exists_without_reusa
     }
     assert len(redis.set_calls) == 1
     assert cache_reads == []
+
+
+@pytest.mark.asyncio
+async def test_initialize_checkout_request_returns_in_progress_for_concurrent_duplicate(monkeypatch):
+    checkout_context = build_checkout_context()
+    redis = FakeConcurrentRedis()
+
+    async def fake_get_by_key(key, _redis_client):
+        payload = redis.store.get(key)
+        if payload is None:
+            return False
+        return idempotency_service.json.loads(payload)
+
+    monkeypatch.setattr(idempotency_service.cache_service, "get_by_key", fake_get_by_key)
+
+    first, second = await asyncio.gather(
+        idempotency_service.initialize_checkout_request(redis, checkout_context, "idem-race"),
+        idempotency_service.initialize_checkout_request(redis, checkout_context, "idem-race"),
+    )
+
+    replays = [first[2], second[2]]
+    assert sum(replay is None for replay in replays) == 1
+    assert sum(replay == {
+        "status": False,
+        "message": "Checkout request already in progress",
+        "data": {},
+    } for replay in replays) == 1
+
+
+@pytest.mark.asyncio
+async def test_initialize_checkout_request_handles_burst_on_same_key(monkeypatch):
+    checkout_context = build_checkout_context()
+    redis = FakeConcurrentRedis()
+
+    async def fake_get_by_key(key, _redis_client):
+        payload = redis.store.get(key)
+        if payload is None:
+            return False
+        return idempotency_service.json.loads(payload)
+
+    monkeypatch.setattr(idempotency_service.cache_service, "get_by_key", fake_get_by_key)
+
+    results = await asyncio.gather(*[
+        idempotency_service.initialize_checkout_request(redis, checkout_context, "idem-burst")
+        for _ in range(50)
+    ])
+
+    replays = [result[2] for result in results]
+    assert sum(replay is None for replay in replays) == 1
+    assert sum(
+        replay == {
+            "status": False,
+            "message": "Checkout request already in progress",
+            "data": {},
+        }
+        for replay in replays
+    ) == 49

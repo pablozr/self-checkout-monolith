@@ -116,6 +116,28 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 python -m workers.smtp.email_worker
 ```
 
+## Script de carga real
+
+Com a API rodando, use o script abaixo para bursts reais via HTTP:
+
+```bash
+python scripts/load_test.py checkout --base-url http://127.0.0.1:8000 --table 1 --product-id 1 --requests 25 --concurrency 10 --idempotency-mode same --shared-session
+```
+
+Para webhook, use um payload JSON valido capturado de um fluxo real e o segredo configurado no backend:
+
+```bash
+python scripts/load_test.py webhook --base-url http://127.0.0.1:8000 --payload-file webhook.json --webhook-secret whsec_xxx --requests 25 --concurrency 10 --event-id-mode same
+```
+
+Notas:
+
+- `checkout --idempotency-mode same` testa dedupe/conflito no mesmo contexto
+- `checkout --idempotency-mode unique` testa throughput com requests distintas
+- `webhook --event-id-mode same` testa dedupe de `event.id`
+- `webhook --event-id-mode unique` testa throughput de eventos distintos
+- esse script mede comportamento real da API em execucao, mas a qualidade do teste depende de Postgres/Redis/Stripe e dados reais preparados
+
 ## Variaveis de ambiente
 
 Use o arquivo `.env.example` como base. Blocos principais:

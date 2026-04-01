@@ -44,6 +44,10 @@ def _resolve_replay_response(
     if existing_hash and existing_hash != request_hash:
         return error_response("Idempotency key already used with a different payload")
 
+    state = payload.get("state")
+    if state == "processing":
+        return error_response("Checkout request already in progress")
+
     return build_replay_response(payload)
 
 
