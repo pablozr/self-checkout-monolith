@@ -57,17 +57,3 @@ async def update_payment_status(
     )
 
     return row is not None
-
-
-async def start_stripe_checkout_session(
-    checkout_context: CheckoutContextData,
-    order_id: int,
-    payment_id: int,
-    idempotency_key: str,
-) -> dict[str, Any]:
-    return await stripe_service.initiate_checkout_session(
-        checkout_context=checkout_context,
-        order_id=order_id,
-        payment_id=payment_id,
-        idempotency_key=idempotency_key,
-    )

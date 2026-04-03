@@ -11,7 +11,7 @@ from services.payment import payment_service
 from services.order import order_service
 from services.shared.money import normalize_amount
 from services.shared.response import error_response
-
+from services.stripe import stripe_service
 
 
 async def _handle_error(
@@ -183,7 +183,7 @@ async def start_stripe_checkout(
         if order_id is None or payment_id is None:
             raise ValueError("Failed to initialize checkout records")
 
-        stripe_response = await payment_service.start_stripe_checkout_session(
+        stripe_response = await stripe_service.initiate_checkout_session(
             checkout_context=checkout_context,
             order_id=order_id,
             payment_id=payment_id,
