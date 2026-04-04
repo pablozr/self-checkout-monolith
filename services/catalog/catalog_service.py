@@ -1,18 +1,8 @@
 import asyncpg
-from typing import Any, cast
-
 from core.config.config import PRODUCT_CACHE_TTL_SECONDS, REDIS_PRODUCT_PREFIX
 from core.logger.logger import logger
 from schemas.product import product_from_row, ProductData
 from services.cache import cache_service
-
-
-def _product_cache_key(product_id: int) -> str:
-    return f"{REDIS_PRODUCT_PREFIX}:{product_id}"
-
-
-def _to_cache_payload(cart: ProductData) -> dict[str, Any]:
-    return cast(dict[str, Any], cast(object, cart))
 
 
 async def list_active_products(conn: asyncpg.Connection) -> dict:
@@ -40,7 +30,7 @@ async def list_active_products(conn: asyncpg.Connection) -> dict:
 
 async def get_product_by_id(conn: asyncpg.Connection, product_id: int, redis_client) -> dict:
     try:
-        cache_key = _product_cache_key(product_id)
+        cache_key = f"{REDIS_PRODUCT_PREFIX}:{product_id}"
         cached = await cache_service.get_by_key(cache_key, redis_client)
 
         if cached:
@@ -69,7 +59,7 @@ async def get_product_by_id(conn: asyncpg.Connection, product_id: int, redis_cli
         await cache_service.set_by_key(
             cache_key,
             PRODUCT_CACHE_TTL_SECONDS,
-            _to_cache_payload(product),
+            {**product},
             redis_client,
         )
 
