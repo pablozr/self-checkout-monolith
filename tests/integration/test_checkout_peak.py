@@ -13,6 +13,7 @@ from dependencies import checkout as checkout_dependency
 from main import app
 from services.order import order_service
 from services.payment import payment_service
+from services.stripe import stripe_service
 
 
 class _DummyConn:
@@ -113,7 +114,7 @@ async def test_checkout_peak_burst_same_key_allows_single_winner(monkeypatch):
 
     monkeypatch.setattr(order_service, "create_order_with_items", fake_create_order_with_items)
     monkeypatch.setattr(payment_service, "create_payment", fake_create_payment)
-    monkeypatch.setattr(payment_service, "start_stripe_checkout_session", fake_start_checkout_session)
+    monkeypatch.setattr(stripe_service, "initiate_checkout_session", fake_start_checkout_session)
 
     app.dependency_overrides[checkout_dependency.validate_checkout_context] = override_checkout_context
     app.dependency_overrides[postgresql.get_db] = override_conn

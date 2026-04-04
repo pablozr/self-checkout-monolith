@@ -16,6 +16,33 @@ from services.shared.response import error_response, success_response
 from services.sse import sse_service
 
 
+def _normalize_stripe_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, Decimal):
+        return str(value)
+
+    if isinstance(value, stripe.StripeObject):
+        return _normalize_stripe_value(value.to_dict())
+
+    if isinstance(value, dict):
+        return {str(key): _normalize_stripe_value(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_normalize_stripe_value(item) for item in value]
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _normalize_stripe_value(to_dict())
+
+    items = getattr(value, "items", None)
+    if callable(items):
+        return {str(key): _normalize_stripe_value(item) for key, item in items()}
+
+    return str(value)
+
+
 async def handle_event(
     conn: asyncpg.Connection,
     redis_client: redis.Redis,
@@ -23,15 +50,22 @@ async def handle_event(
     signature: str,
 ) -> dict[str, Any]:
     try:
-
-        event = stripe.Webhook.construct_event(
+        raw_event = stripe.Webhook.construct_event(
             payload,
             signature,
             settings.STRIPE_WEBHOOK_SECRET,
         )
+        event = _normalize_stripe_value(raw_event)
+
+        if not isinstance(event, dict):
+            raise ValueError("Stripe event payload is not an object")
+
         event_id = str(event["id"])
         event_type = str(event["type"])
         obj = event["data"]["object"]
+
+        if not isinstance(obj, dict):
+            raise ValueError("Stripe event data.object is not an object")
 
         async with conn.transaction():
             created = await _register_event(conn, event_id, event_type, obj)
@@ -74,7 +108,7 @@ async def _register_event(
         """,
         event_id,
         event_type,
-        json.dumps(obj),
+        json.dumps(obj, default=vars),
     )
 
     return row is not None

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -19,6 +20,23 @@ class _DummyConn:
         return _DummyTransaction()
 
 
+class _FakeStripeObject(Mapping):
+    def __init__(self, payload):
+        self._payload = payload
+
+    def __getitem__(self, key):
+        return self._payload[key]
+
+    def __iter__(self):
+        return iter(self._payload)
+
+    def __len__(self):
+        return len(self._payload)
+
+    def to_dict_recursive(self):
+        return self._payload
+
+
 def _build_checkout_completed_object(**overrides):
     obj = {
         "id": "cs_test_123",
@@ -34,6 +52,83 @@ def _build_checkout_completed_object(**overrides):
     }
     obj.update(overrides)
     return obj
+
+
+@pytest.mark.asyncio
+async def test_handle_event_normalizes_stripe_objects_before_persistence_and_dispatch(monkeypatch):
+    event = _FakeStripeObject(
+        {
+            "id": "evt_nested_123",
+            "type": "checkout.session.completed",
+            "data": {
+                "object": _FakeStripeObject(
+                    {
+                        "id": "cs_nested_123",
+                        "payment_intent": "pi_nested_123",
+                        "payment_status": "paid",
+                        "amount_total": 1250,
+                        "metadata": {
+                            "orderId": "10",
+                            "paymentId": "20",
+                            "tableId": "3",
+                            "sessionToken": "session-token",
+                        },
+                        "line_items": [
+                            _FakeStripeObject(
+                                {
+                                    "id": "li_1",
+                                    "price": _FakeStripeObject({"id": "price_1", "unit_amount": 1250}),
+                                }
+                            )
+                        ],
+                    }
+                ),
+            },
+        }
+    )
+    captured = {}
+
+    def fake_construct_event(payload, signature, secret):
+        return event
+
+    async def fake_register_event(conn, event_id, event_type, obj):
+        captured["register"] = {
+            "event_id": event_id,
+            "event_type": event_type,
+            "obj": obj,
+        }
+        return True
+
+    async def fake_dispatch_event(conn, event_type, obj):
+        captured["dispatch"] = {
+            "event_type": event_type,
+            "obj": obj,
+        }
+        return None
+
+    monkeypatch.setattr(webhook_service.stripe.Webhook, "construct_event", fake_construct_event)
+    monkeypatch.setattr(webhook_service, "_register_event", fake_register_event)
+    monkeypatch.setattr(webhook_service, "_dispatch_event", fake_dispatch_event)
+
+    response = await webhook_service.handle_event(
+        conn=_DummyConn(),
+        redis_client=object(),
+        payload=b"{}",
+        signature="sig_header",
+    )
+
+    assert response["status"] is True
+    register_obj = captured["register"]["obj"]
+    dispatch_obj = captured["dispatch"]["obj"]
+    assert isinstance(register_obj, dict)
+    assert isinstance(dispatch_obj, dict)
+    assert register_obj == dispatch_obj
+    assert register_obj["line_items"][0]["price"] == {"id": "price_1", "unit_amount": 1250}
+
+    # Must stay JSON serializable all the way down.
+    import json
+
+    json.dumps(register_obj)
 
 
 @pytest.mark.asyncio

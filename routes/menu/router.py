@@ -2,7 +2,11 @@ import asyncpg
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
-from core.config.config import ANON_SESSION_TTL_SECONDS, COOKIE_ANON_SESSION
+from core.config.config import (
+    ANON_SESSION_COOKIE_SECURE,
+    ANON_SESSION_TTL_SECONDS,
+    COOKIE_ANON_SESSION,
+)
 from core.postgresql.postgresql import postgresql
 from core.redis.redis import redis_cache
 from dependencies import session
@@ -58,7 +62,7 @@ async def load_menu(
         key=COOKIE_ANON_SESSION,
         value=session_response["data"]["sessionToken"],
         httponly=True,
-        secure=True,
+        secure=ANON_SESSION_COOKIE_SECURE,
         samesite="lax",
         path="/",
         max_age=ANON_SESSION_TTL_SECONDS,

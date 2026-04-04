@@ -5,7 +5,8 @@ REQUIRED_ENV_DEFAULTS = {
     "DB_HOST": "localhost",
     "DB_USER": "postgres",
     "DB_PASSWORD": "postgres",
-    "DB_NAME": "self_checkout",
+    # DB_NAME: não usar setdefault — senão sobrescreve o valor do ficheiro .env
+    # (pydantic-settings dá prioridade a variáveis de ambiente sobre .env).
     "RABBITMQ_HOST": "localhost",
     "RABBITMQ_USER": "guest",
     "RABBITMQ_PASSWORD": "guest",

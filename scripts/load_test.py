@@ -115,6 +115,7 @@ async def prepare_checkout_session(
     add_response = await client.post(
         f"{base_url}/cart/items",
         json={"productId": product_id, "quantity": quantity},
+        cookies={"anon_session": anon_session},
     )
     add_response.raise_for_status()
     return anon_session

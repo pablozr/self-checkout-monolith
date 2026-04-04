@@ -60,7 +60,7 @@ async def test_start_stripe_checkout_returns_replay_without_touching_db_or_provi
     )
     monkeypatch.setattr(checkout_service.order_service, "create_order_with_items", create_order_with_items)
     monkeypatch.setattr(checkout_service.payment_service, "create_payment", create_payment)
-    monkeypatch.setattr(checkout_service.payment_service, "start_stripe_checkout_session", start_checkout_session)
+    monkeypatch.setattr(checkout_service.stripe_service, "initiate_checkout_session", start_checkout_session)
 
     response = await checkout_service.start_stripe_checkout(
         conn=conn,
@@ -100,7 +100,7 @@ async def test_start_stripe_checkout_marks_payment_failed_and_saves_failed_paylo
     monkeypatch.setattr(checkout_service.idempotency_service, "initialize_checkout_request", initialize_checkout_request)
     monkeypatch.setattr(checkout_service.order_service, "create_order_with_items", create_order_with_items)
     monkeypatch.setattr(checkout_service.payment_service, "create_payment", create_payment)
-    monkeypatch.setattr(checkout_service.payment_service, "start_stripe_checkout_session", start_checkout_session)
+    monkeypatch.setattr(checkout_service.stripe_service, "initiate_checkout_session", start_checkout_session)
     monkeypatch.setattr(checkout_service.idempotency_service, "save_payload", save_payload)
 
     response = await checkout_service.start_stripe_checkout(

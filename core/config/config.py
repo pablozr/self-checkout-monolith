@@ -44,10 +44,13 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+IS_DEVELOPMENT = settings.ENVIRONMENT.lower() == "development"
+
 # Application constants (not read from environment; keep next to settings for one import surface)
 COOKIE_AUTH = "auth"
 COOKIE_AUTH_RESET = "auth_reset"
 COOKIE_ANON_SESSION = "anon_session"
+ANON_SESSION_COOKIE_SECURE = not IS_DEVELOPMENT
 
 AUTH_COOKIE_MAX_AGE = 259200
 RESET_COOKIE_MAX_AGE = 900
