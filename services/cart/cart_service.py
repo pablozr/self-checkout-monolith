@@ -19,22 +19,9 @@ from services.catalog import catalog_service
 from services.shared.response import error_response
 
 
-def _session_key(token: str) -> str:
-    return f"{REDIS_SESSION_PREFIX}:{token}"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def _recalculate_subtotal(items: list[CartItemData]) -> float:
     subtotal = sum(float(item["lineTotal"]) for item in items)
     return round(subtotal, 2)
-
-
-
-def _to_cache_payload(cart: CartData) -> dict[str, Any]:
-    return cast(dict[str, Any], cast(object, cart))
 
 
 async def bootstrap_session(
@@ -61,13 +48,13 @@ async def bootstrap_session(
             "tableId": table_id,
             "items": [],
             "subtotal": 0.0,
-            "createdAt": _utc_now_iso(),
+            "createdAt": str(datetime.now(timezone.utc)),
         }
 
         await cache_service.set_by_key(
-            _session_key(token),
+            f"{REDIS_SESSION_PREFIX}:{token}",
             ANON_SESSION_TTL_SECONDS,
-            _to_cache_payload(payload),
+            {**payload},
             redis_client,
         )
 
@@ -141,9 +128,9 @@ async def add_item(
         session["subtotal"] = _recalculate_subtotal(items)
 
         await cache_service.set_by_key(
-            _session_key(token),
+            f"{REDIS_SESSION_PREFIX}:{token}",
             ANON_SESSION_TTL_SECONDS,
-            _to_cache_payload(session),
+            {**session},
             redis_client,
         )
 
@@ -177,9 +164,9 @@ async def update_item_quantity(
         session["subtotal"] = _recalculate_subtotal(items)
 
         await cache_service.set_by_key(
-            _session_key(token),
+            f"{REDIS_SESSION_PREFIX}:{token}",
             ANON_SESSION_TTL_SECONDS,
-            _to_cache_payload(session),
+            {**session},
             redis_client,
         )
 
@@ -212,9 +199,9 @@ async def remove_item(
         session["subtotal"] = _recalculate_subtotal(new_items)
 
         await cache_service.set_by_key(
-            _session_key(token),
+            f"{REDIS_SESSION_PREFIX}:{token}",
             ANON_SESSION_TTL_SECONDS,
-            _to_cache_payload(session),
+            {**session},
             redis_client,
         )
 
@@ -237,9 +224,9 @@ async def clear_cart(redis_client, session_context: CartSessionContext) -> dict[
         session["subtotal"] = 0.0
 
         await cache_service.set_by_key(
-            _session_key(token),
+            f"{REDIS_SESSION_PREFIX}:{token}",
             ANON_SESSION_TTL_SECONDS,
-            _to_cache_payload(session),
+            {**session},
             redis_client,
         )
 
@@ -248,26 +235,6 @@ async def clear_cart(redis_client, session_context: CartSessionContext) -> dict[
             "message": "Cart cleared successfully",
             "data": {"cart": session},
         }
-    except Exception as e:
-        logger.exception(e)
-        return error_response("Internal server error")
-
-
-async def clear_cart_by_session_token(
-    redis_client,
-    session_token: str,
-) -> dict[str, Any]:
-    try:
-        session_raw = await cache_service.get_by_key(_session_key(session_token), redis_client)
-        if not is_cart_data(session_raw):
-            return error_response("Session not found")
-
-        session_context: CartSessionContext = {
-            "token": session_token,
-            "session": session_raw,
-        }
-
-        return await clear_cart(redis_client, session_context)
     except Exception as e:
         logger.exception(e)
         return error_response("Internal server error")
