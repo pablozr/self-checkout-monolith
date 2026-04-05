@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     API_PORT: int = 8000
+    FRONTEND_URL: str = ""
 
     DB_HOST: str
     DB_PORT: int = 5432
@@ -34,8 +35,6 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str
 
     STRIPE_SECRET_KEY: str = ""
-    STRIPE_CHECKOUT_SUCCESS_URL: str = "http://localhost:3000/checkout/success"
-    STRIPE_CHECKOUT_CANCEL_URL: str = "http://localhost:3000/checkout/cancel"
     STRIPE_CURRENCY: str = "chf"
     STRIPE_WEBHOOK_SECRET: str = ""
 

@@ -34,23 +34,6 @@ def _build_line_items(
     return line_items
 
 
-def _append_query(url: str, query: str) -> str:
-    separator = "&" if "?" in url else "?"
-    return f"{url}{separator}{query}"
-
-
-def _build_urls(order_id: int, payment_id: int) -> tuple[str, str]:
-    success_query = (
-        f"session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}&payment_id={payment_id}"
-    )
-    cancel_query = f"order_id={order_id}&payment_id={payment_id}"
-
-    success_url = _append_query(settings.STRIPE_CHECKOUT_SUCCESS_URL, success_query)
-    cancel_url = _append_query(settings.STRIPE_CHECKOUT_CANCEL_URL, cancel_query)
-
-    return success_url, cancel_url
-
-
 def _create_checkout_session(
         params: dict[str, Any],
         idempotency_key: str,
@@ -75,9 +58,6 @@ async def initiate_checkout_session(
         if not settings.STRIPE_SECRET_KEY:
             return error_response("Stripe secret key is not configured")
 
-        if not settings.STRIPE_CHECKOUT_SUCCESS_URL or not settings.STRIPE_CHECKOUT_CANCEL_URL:
-            return error_response("Stripe checkout URLs are not configured")
-
         currency = settings.STRIPE_CURRENCY.strip().lower()
         if len(currency) != 3:
             return error_response("Invalid Stripe currency configuration")
@@ -86,7 +66,8 @@ async def initiate_checkout_session(
         if not line_items:
             return error_response("Cart is empty")
 
-        success_url, cancel_url = _build_urls(order_id, payment_id)
+        success_url = f"{settings.FRONTEND_URL}/checkout/success?order_id={order_id}&payment_id={payment_id}&session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"{settings.FRONTEND_URL}/checkout/cancel?order_id={order_id}&payment_id={payment_id}"
 
         metadata = {
             "orderId": str(order_id),
