@@ -1,7 +1,7 @@
 import asyncpg
 from core.config.config import PRODUCT_CACHE_TTL_SECONDS, REDIS_PRODUCT_PREFIX
 from core.logger.logger import logger
-from schemas.product import product_from_row, ProductData
+from schemas.product import product_from_row
 from services.cache import cache_service
 
 
