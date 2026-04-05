@@ -11,7 +11,6 @@ from schemas.cart import (
     CartData,
     CartItemData,
     CartSessionContext,
-    is_cart_data,
 )
 from schemas.product import ProductData
 from services.cache import cache_service

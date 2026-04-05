@@ -1,11 +1,9 @@
 from decimal import Decimal
-from typing import Any
 
 import asyncpg
 
-from schemas.checkout import CheckoutContextData, CheckoutCompletedData
+from schemas.checkout import CheckoutCompletedData
 from services.shared.money import normalize_amount
-from services.stripe import stripe_service
 
 
 async def create_payment(
