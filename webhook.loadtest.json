@@ -1,0 +1,19 @@
+{
+  "id": "evt_loadtest_base",
+  "object": "event",
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_a1rM7UGb069St5XvoGVqq52uFtIX2V2kHE99igC56XThcdGDcv2Kghqby5",
+      "payment_status": "paid",
+      "metadata": {
+        "orderId": "106",
+        "paymentId": "106",
+        "tableId": "1",
+        "sessionToken": "load-test-session"
+      },
+      "amount_total": 2890,
+      "payment_intent": "pi_loadtest_106"
+    }
+  }
+}
