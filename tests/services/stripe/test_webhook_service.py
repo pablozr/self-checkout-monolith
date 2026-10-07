@@ -208,6 +208,8 @@ async def test_validate_checkout_against_db_rejects_amount_mismatch():
             "order_status": "pending",
             "payment_id": 20,
             "payment_order_id": 10,
+            "payment_provider": "stripe",
+            "order_payment_count": 1,
             "payment_status": "pending",
             "payment_amount": Decimal("10.00"),
             "checkout_session_id": "cs_test_123",
@@ -224,4 +226,68 @@ async def test_validate_checkout_against_db_rejects_amount_mismatch():
     )
 
     with pytest.raises(ValueError, match="amount_total mismatch"):
+        await webhook_service._validate_checkout_against_db(conn, data)
+
+
+@pytest.mark.asyncio
+async def test_validate_checkout_against_db_rejects_non_stripe_provider():
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "order_id": 10,
+            "table_id": 3,
+            "order_total": Decimal("12.50"),
+            "order_status": "pending",
+            "payment_id": 20,
+            "payment_order_id": 10,
+            "payment_provider": "cash",
+            "order_payment_count": 1,
+            "payment_status": "pending",
+            "payment_amount": Decimal("12.50"),
+            "checkout_session_id": "cs_test_123",
+        }
+    )
+    data = webhook_service.CheckoutCompletedData(
+        order_id=10,
+        payment_id=20,
+        table_id=3,
+        session_token="session-token",
+        checkout_session_id="cs_test_123",
+        payment_intent_id="pi_test_123",
+        amount_total=1250,
+    )
+
+    with pytest.raises(ValueError, match="payment provider mismatch"):
+        await webhook_service._validate_checkout_against_db(conn, data)
+
+
+@pytest.mark.asyncio
+async def test_validate_checkout_against_db_rejects_multiple_payments_for_order():
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "order_id": 10,
+            "table_id": 3,
+            "order_total": Decimal("12.50"),
+            "order_status": "pending",
+            "payment_id": 20,
+            "payment_order_id": 10,
+            "payment_provider": "stripe",
+            "order_payment_count": 2,
+            "payment_status": "pending",
+            "payment_amount": Decimal("12.50"),
+            "checkout_session_id": "cs_test_123",
+        }
+    )
+    data = webhook_service.CheckoutCompletedData(
+        order_id=10,
+        payment_id=20,
+        table_id=3,
+        session_token="session-token",
+        checkout_session_id="cs_test_123",
+        payment_intent_id="pi_test_123",
+        amount_total=1250,
+    )
+
+    with pytest.raises(ValueError, match="Expected exactly one payment for order"):
         await webhook_service._validate_checkout_against_db(conn, data)

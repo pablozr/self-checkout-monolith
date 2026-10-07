@@ -8,6 +8,9 @@ from services.shared.money import normalize_amount
 from services.stripe import stripe_service
 
 
+STRIPE_PROVIDER = "stripe"
+
+
 async def create_payment(
     conn: asyncpg.Connection,
     order_id: int,
@@ -15,13 +18,19 @@ async def create_payment(
     status: str,
 ) -> int:
     query = """
-            INSERT INTO payments (order_id, amount, status)
-            VALUES ($1, $2, $3)
+            INSERT INTO payments (order_id, provider, amount, status)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             """
 
     normalized_amount = normalize_amount(amount)
-    payment_id = await conn.fetchval(query, order_id, normalized_amount, status)
+    payment_id = await conn.fetchval(
+        query,
+        order_id,
+        STRIPE_PROVIDER,
+        normalized_amount,
+        status,
+    )
     if payment_id is None:
         raise ValueError("Failed to create payment")
 
@@ -43,6 +52,7 @@ async def update_payment_status(
             WHERE id = $4
               AND order_id = $5
               AND status = ANY($6::text[])
+              AND provider = $7
             RETURNING id
             """
 
@@ -54,6 +64,7 @@ async def update_payment_status(
         data.payment_id,
         data.order_id,
         list(allowed_current_statuses),
+        STRIPE_PROVIDER,
     )
 
     return row is not None

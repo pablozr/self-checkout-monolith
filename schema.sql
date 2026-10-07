@@ -53,21 +53,21 @@ CREATE TABLE order_items (
 CREATE TABLE payments (
     id                  SERIAL PRIMARY KEY,
     order_id            INT            NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-    provider            VARCHAR(50)    NOT NULL DEFAULT 'stripe',
+    provider            VARCHAR(50)    NOT NULL DEFAULT 'stripe' CHECK (provider = 'stripe'),
     amount              NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
     status              VARCHAR(50)    NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'requires_action', 'paid', 'failed', 'canceled')),
-    checkout_session_id VARCHAR(255),
+    checkout_session_id VARCHAR(255)   CHECK (checkout_session_id IS NULL OR BTRIM(checkout_session_id) <> ''),
     checkout_url        TEXT,
-    provider_payment_id VARCHAR(255),
+    provider_payment_id VARCHAR(255)   CHECK (provider_payment_id IS NULL OR BTRIM(provider_payment_id) <> ''),
     created_at          TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMP      NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE stripe_events (
     id           SERIAL PRIMARY KEY,
-    event_id     VARCHAR(255) NOT NULL UNIQUE,
-    event_type   VARCHAR(255) NOT NULL,
+    event_id     VARCHAR(255) NOT NULL UNIQUE CHECK (BTRIM(event_id) <> ''),
+    event_type   VARCHAR(255) NOT NULL CHECK (BTRIM(event_type) <> ''),
     event_object JSONB        NOT NULL,
     created_at   TIMESTAMP    NOT NULL DEFAULT NOW()
 );
@@ -76,12 +76,15 @@ CREATE INDEX idx_tables_number ON tables (number);
 CREATE INDEX idx_products_active_available ON products (is_active, is_available);
 
 CREATE INDEX idx_orders_table_id ON orders (table_id);
+CREATE INDEX idx_orders_created_at ON orders (created_at DESC);
 CREATE INDEX idx_orders_status_created_at ON orders (status, created_at DESC);
 
 CREATE INDEX idx_order_items_order_id ON order_items (order_id);
 CREATE INDEX idx_order_items_product_id ON order_items (product_id);
 
-CREATE INDEX idx_payments_order_id ON payments (order_id);
+CREATE UNIQUE INDEX ux_payments_order_id ON payments (order_id);
 CREATE INDEX idx_payments_status_created_at ON payments (status, created_at DESC);
 CREATE UNIQUE INDEX ux_payments_checkout_session_id ON payments (checkout_session_id);
 CREATE UNIQUE INDEX ux_payments_provider_payment_id ON payments (provider_payment_id);
+
+CREATE INDEX idx_stripe_events_event_type_created_at ON stripe_events (event_type, created_at DESC);

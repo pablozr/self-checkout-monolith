@@ -129,9 +129,11 @@ async def _validate_checkout_against_db(
                o.status              AS order_status,
                p.id                  AS payment_id,
                p.order_id            AS payment_order_id,
+               p.provider            AS payment_provider,
                p.status              AS payment_status,
                p.amount              AS payment_amount,
-               p.checkout_session_id AS checkout_session_id
+               p.checkout_session_id AS checkout_session_id,
+               (SELECT COUNT(*) FROM payments p2 WHERE p2.order_id = o.id) AS order_payment_count
         FROM orders o
                  JOIN payments p ON p.order_id = o.id
         WHERE o.id = $1
@@ -150,6 +152,12 @@ async def _validate_checkout_against_db(
 
     if row["payment_order_id"] != data.order_id:
         raise ValueError("payment.order_id mismatch")
+
+    if str(row["payment_provider"]).lower() != "stripe":
+        raise ValueError("payment provider mismatch")
+
+    if int(row["order_payment_count"]) != 1:
+        raise ValueError("Expected exactly one payment for order")
 
     existing_checkout_session_id = row["checkout_session_id"]
     if existing_checkout_session_id and existing_checkout_session_id != data.checkout_session_id:

@@ -101,6 +101,25 @@ copy .env.example .env
 psql -U postgres -d your_db -f schema.sql
 ```
 
+5. (Phase 2 DB safety) apos aplicar SQL manualmente, valide invariantes de DB ao vivo
+
+```bash
+python scripts/verify_db_safety.py
+```
+
+O script usa diretamente `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` e falha com exit code `1` se algum invariante obrigatorio estiver ausente em `orders`, `payments` ou `stripe_events`.
+
+Atualmente ele valida (entre outros):
+
+- indices `idx_orders_table_id`, `idx_orders_created_at`, `idx_orders_status_created_at`
+- `payments` com `ux_payments_order_id` (uma cobranca por pedido), sem depender de `idx_payments_order_id`/`idx_payments_order_id_status`
+- indices `idx_payments_status_created_at` e `idx_stripe_events_event_type_created_at`
+- unicidade de `ux_payments_checkout_session_id`, `ux_payments_provider_payment_id` e `stripe_events.event_id`
+- FK `payments.order_id -> orders.id`
+- checks de status em `payments` e `orders`
+- check de `provider` aceitando apenas `stripe`
+- checks de nao-vazio para identificadores opcionais de `payments` e identificadores de `stripe_events` quando presentes
+
 ## Rodando a API
 
 ```bash
